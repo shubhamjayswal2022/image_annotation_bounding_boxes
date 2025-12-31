@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchImage, updateAnnotations } from "../store/imageSlice";
@@ -10,23 +10,90 @@ const ImageAnnotator = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const { current, loading } = useSelector((state) => state.images);
-  const [annotations, setAnnotations] = useState([]);
+  const [annotations, setAnnotationsState] = useState([]);
   const [saving, setSaving] = useState(false);
+  const annotationsRef = useRef([]);
+  
+  // Wrapper function that updates both state and ref
+  const setAnnotations = React.useCallback((updater) => {
+    if (typeof updater === 'function') {
+      setAnnotationsState((prev) => {
+        const updated = updater(prev);
+        annotationsRef.current = updated;
+        return updated;
+      });
+    } else {
+      setAnnotationsState(updater);
+      annotationsRef.current = updater;
+    }
+  }, []);
+  
+  // Keep ref in sync with state (fallback)
+  useEffect(() => {
+    annotationsRef.current = annotations;
+  }, [annotations]);
+
+  // Default colors for annotations
+  const defaultColors = [
+    0x00ff00, 0xff0000, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff,
+    0xff8800, 0x8800ff, 0x00ff88, 0xff0088
+  ];
+
+  const previousImageId = useRef(null);
 
   useEffect(() => {
+    // Always fetch when id changes
     dispatch(fetchImage(id));
+    
+    // If this is a different image, clear annotations
+    if (previousImageId.current !== id) {
+      setAnnotations([]);
+      annotationsRef.current = [];
+      previousImageId.current = id;
+    }
   }, [id, dispatch]);
 
   useEffect(() => {
-    if (current) {
-      setAnnotations(current.annotations || []);
+    // Load annotations whenever current image data is available and matches the current id
+    if (current && current._id === id) {
+      const annotationsFromCurrent = current.annotations || [];
+      
+      // Always process and set annotations when current matches id
+      const annotationsWithColors = annotationsFromCurrent.map((annotation, index) => {
+        if (annotation.color === undefined || annotation.color === null) {
+          return {
+            ...annotation,
+            color: defaultColors[index % defaultColors.length]
+          };
+        }
+        return annotation;
+      });
+      
+      // Always update to ensure annotations are loaded
+      setAnnotations(annotationsWithColors);
+      annotationsRef.current = annotationsWithColors;
+    } else if (current && current._id !== id) {
+      // If current is for a different image, clear annotations
+      setAnnotations([]);
+      annotationsRef.current = [];
     }
-  }, [current]);
+  }, [current, id]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await dispatch(updateAnnotations({ id, annotations })).unwrap();
+      // Use ref to get the absolute latest annotations state (including any pending updates)
+      const annotationsToSave = annotationsRef.current;
+      
+      console.log('Saving annotations:', JSON.stringify(annotationsToSave, null, 2));
+      
+      const result = await dispatch(updateAnnotations({ id, annotations: annotationsToSave })).unwrap();
+      
+      // Update local annotations with the saved data (which includes colors)
+      if (result && result.annotations) {
+        setAnnotations(result.annotations);
+        annotationsRef.current = result.annotations;
+      }
       alert("Annotations saved successfully!");
     } catch (error) {
       alert("Failed to save annotations: " + error.message);
@@ -68,6 +135,7 @@ const ImageAnnotator = () => {
       <div className="annotator-main-content">
         <div className="annotator-container">
           <Annotator
+            key={`${id}-${current?._id || ''}`}
             imageUrl={imageUrl}
             annotations={annotations}
             setAnnotations={setAnnotations}
@@ -80,7 +148,7 @@ const ImageAnnotator = () => {
             {annotations.length} annotation{annotations.length !== 1 ? "s" : ""}
           </p>
           <p className="hint">
-            Click and drag to create boxes • Double-click to delete • Labels shown on boxes
+            Click and drag to create boxes • Click to select • Drag to move • Drag handles to resize • Double-click or press Delete to remove
           </p>
         </div>
         {annotations.length > 0 && (

@@ -21,6 +21,10 @@ const annotationSchema = new mongoose.Schema({
     type: String,
     default: "object",
   },
+  color: {
+    type: Number,
+    default: null,
+  },
 });
 
 const imageSchema = new mongoose.Schema(
