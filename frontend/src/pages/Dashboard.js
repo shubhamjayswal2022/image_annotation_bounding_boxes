@@ -9,12 +9,12 @@ const Dashboard = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { items, loading } = useSelector((state) => state.images);
-  const { user } = useSelector((state) => state.auth);
+  const { user, loading: authLoading } = useSelector((state) => state.auth);
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     dispatch(fetchImages());
-  }, [dispatch]);
+  }, []);
 
   const handleLogout = () => {
     dispatch(logout());
@@ -46,7 +46,9 @@ const Dashboard = () => {
       <nav className="navbar">
         <h1>Image Annotation Tool</h1>
         <div className="navbar-right">
-          <span className="user-name">Welcome, {user?.name}</span>
+          <span className="user-name">
+            Welcome, {user?.name || (authLoading ? "Loading..." : "User")}
+          </span>
           <button onClick={handleLogout} className="btn-logout">
             Logout
           </button>
